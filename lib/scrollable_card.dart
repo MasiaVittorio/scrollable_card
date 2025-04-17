@@ -1,7 +1,14 @@
+// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:sid_base/sid_base.dart';
+
+part 'src/animated_body.dart';
+part 'src/animated_decoration.dart';
+part 'src/animated_left.dart';
+part 'src/animated_right.dart';
+part 'src/rest_body.dart';
 
 typedef ScrolledBuilder =
     Widget Function(BuildContext context, VoidCallback unscroll);
@@ -24,6 +31,7 @@ class ScrollableCard extends StatefulWidget {
     this.fromLeftBuilder,
     this.scrolledMargin = EdgeInsets.zero,
     this.margin = EdgeInsets.zero,
+    this.translationFraction = 0.25,
   });
 
   final Color? backgroundColor;
@@ -35,6 +43,7 @@ class ScrollableCard extends StatefulWidget {
   final ScrolledBuilder? fromLeftBuilder;
   final EdgeInsets margin;
   final EdgeInsets scrolledMargin;
+  final double translationFraction;
 
   @override
   State<ScrollableCard> createState() => _ScrollableCardState();
@@ -99,219 +108,64 @@ class _ScrollableCardState extends State<ScrollableCard>
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.theme;
-    final backgroundColor =
+    final ThemeData theme = context.theme;
+    final Color backgroundColor =
         widget.backgroundColor ?? theme.colorScheme.surfaceContainerLow;
-    final scrolledBackgroundColor =
+    final Color scrolledBackgroundColor =
         widget.scrolledBackgroundColor ??
         theme.colorScheme.surfaceContainerHighest;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final originalWidth = w - widget.margin.horizontal;
+        final double maxWidth = constraints.maxWidth;
+
         return ConstrainedBox(
           constraints: constraints,
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (context, child) {
-              final value = controller.value.abs();
-              var shape =
-                  ShapeBorder.lerp(widget.shape, widget.scrolledShape, value)!;
-              return Padding(
-                padding:
-                    EdgeInsets.lerp(
-                      widget.margin,
-                      widget.scrolledMargin,
-                      value,
-                    )!,
-                child: DecoratedBox(
-                  position: DecorationPosition.foreground,
-                  decoration: ShapeDecoration(shape: shape),
-                  child: Container(
-                    clipBehavior: Clip.antiAlias,
-                    decoration: ShapeDecoration(
-                      shape: shape,
-                      color:
-                          Color.lerp(
-                            backgroundColor,
-                            scrolledBackgroundColor,
-                            value,
-                          )!,
-                    ),
-                    child: child!,
-                  ),
-                ),
-              );
-            },
+          child: _AnimatedDecoration(
+            controller: controller,
+            unscrolledShape: widget.scrolledShape,
+            scrolledShape: widget.scrolledShape,
+            margin: widget.margin,
+            scrolledMargin: widget.scrolledMargin,
+            backgroundColor: backgroundColor,
+            scrolledBackgroundColor: scrolledBackgroundColor,
             child: GestureDetector(
-              onPanStart: (details) {
-                lastStartingOffset = details.localPosition;
-                lastStartingValue = controller.value;
-              },
-              onPanUpdate: (details) {
-                final Offset delta = details.localPosition - lastStartingOffset;
-                final dx = delta.dx;
-                final df = dx / w;
-                final sign = -df.sign;
-                final tdf = 1 - pow(2, -df.abs() * 10);
-                final stdf = tdf * sign;
-                controller.value = (lastStartingValue + stdf).clamp(
-                  allowFromLeft ? -1 : 0,
-                  allowFromRight ? 1 : 0,
-                );
-              },
-              onPanEnd: (details) {
-                final double vx = details.velocity.pixelsPerSecond.dx;
-                final _Started started = switch (lastStartingValue) {
-                  < -0.1 => _Started.scrollFromLeft,
-                  > 0.1 => _Started.scrollFromRight,
-                  _ => _Started.center,
-                };
-
-                const threshold = 750.0;
-                final _Going going = switch (vx) {
-                  < -threshold => _Going.fastFromRight,
-                  > threshold => _Going.fastFromLeft,
-                  _ => _Going.slow,
-                };
-                final _CloseTo closeTo = switch (controller.value) {
-                  < -0.75 => _CloseTo.scrollFromLeft,
-                  > 0.75 => _CloseTo.scrollFromRight,
-                  _ => _CloseTo.center,
-                };
-                switch ((started, going, closeTo)) {
-                  case (
-                        _Started.scrollFromRight || _Started.center,
-                        _Going.fastFromRight,
-                        _,
-                      ) ||
-                      (
-                        _Started.center || _Started.scrollFromRight,
-                        _Going.slow,
-                        _CloseTo.scrollFromRight,
-                      ):
-                    finishScrollFromRight();
-                    return;
-                  case (
-                        _Started.scrollFromLeft || _Started.center,
-                        _Going.fastFromLeft,
-                        _,
-                      ) ||
-                      (
-                        _Started.center || _Started.scrollFromLeft,
-                        _Going.slow,
-                        _CloseTo.scrollFromLeft,
-                      ):
-                    finishScrollFromLeft();
-                    return;
-                  case (_, _Going.slow, _CloseTo.center) ||
-                      (_Started.scrollFromRight, _Going.fastFromLeft, _) ||
-                      (_Started.scrollFromLeft, _Going.fastFromRight, _) ||
-                      (
-                        _Started.scrollFromRight,
-                        _Going.slow,
-                        _CloseTo.scrollFromLeft,
-                      ) ||
-                      (
-                        _Started.scrollFromLeft,
-                        _Going.slow,
-                        _CloseTo.scrollFromRight,
-                      ):
-                    unscroll();
-                    return;
-                }
-              },
+              onPanStart: onPanStart,
+              onPanUpdate: (details) => onPanUpdate(details, maxWidth),
+              onPanEnd: onPanEnd,
               child: Container(
-                color: Colors.transparent, // for the gesture
+                color: Colors.transparent, // important for the gesture detector
                 child: Stack(
                   children: [
-                    AnimatedBuilder(
-                      animation: controller,
-                      builder: (context, child) {
-                        final value = controller.value;
-                        return Transform.translate(
-                          offset: Offset(
-                            -value.rangeMapLoose(to: (0, w / 4)),
-                            0,
-                          ),
-                          child: Opacity(
-                            opacity: (1 - value.abs()).rangeMap(
-                              from: (0.45, 1),
-                            ),
-                            child: IgnorePointer(
-                              ignoring: value.abs() > 0.1,
-                              child: child!,
-                            ),
-                          ),
-                        );
-                      },
-                      child: SizedBox(
-                        width: originalWidth,
-                        child: Material(
-                          type: MaterialType.transparency,
-                          child: widget.builder(
-                            context,
-                            finishScrollFromRight,
-                            finishScrollFromLeft,
-                          ),
+                    _AnimatedBody(
+                      controller: controller,
+                      maxWidth: maxWidth,
+                      translationFraction: widget.translationFraction,
+                      child: _RestBody(
+                        width: maxWidth - widget.margin.horizontal,
+                        collapsedContent: widget.builder(
+                          context,
+                          finishScrollFromRight,
+                          finishScrollFromLeft,
                         ),
                       ),
                     ),
-                    if (widget.fromRightBuilder
-                        case ScrolledBuilder fromRightBuilder)
+                    if (widget.fromRightBuilder case ScrolledBuilder builder)
                       Positioned.fill(
-                        child: AnimatedBuilder(
-                          animation: controller,
-                          builder: (context, child) {
-                            final value =
-                                controller.value.clamp(0.0, 1.0).abs();
-                            return Transform.translate(
-                              offset: Offset(
-                                value.rangeMapLoose(to: (w / 4, 0)),
-                                0,
-                              ),
-                              child: Opacity(
-                                opacity: value.rangeMap(from: (0.55, 1)),
-                                child: IgnorePointer(
-                                  ignoring: value.abs() < 0.9,
-                                  child: child!,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Material(
-                            type: MaterialType.transparency,
-                            child: fromRightBuilder(context, unscroll),
-                          ),
+                        child: _AnimatedRight(
+                          translationFraction: widget.translationFraction,
+                          controller: controller,
+                          maxWidth: maxWidth,
+                          child: builder(context, unscroll),
                         ),
                       ),
-                    if (widget.fromLeftBuilder
-                        case ScrolledBuilder fromLeftBuilder)
+                    if (widget.fromLeftBuilder case ScrolledBuilder builder)
                       Positioned.fill(
-                        child: AnimatedBuilder(
-                          animation: controller,
-                          builder: (context, child) {
-                            final value =
-                                controller.value.clamp(-1.0, 0.0).abs();
-                            return Transform.translate(
-                              offset: Offset(
-                                value.rangeMapLoose(to: (-w / 4, 0)),
-                                0,
-                              ),
-                              child: Opacity(
-                                opacity: value.rangeMap(from: (0.55, 1)),
-                                child: IgnorePointer(
-                                  ignoring: value.abs() < 0.9,
-                                  child: child!,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Material(
-                            type: MaterialType.transparency,
-                            child: fromLeftBuilder(context, unscroll),
-                          ),
+                        child: _AnimatedLeft(
+                          translationFraction: widget.translationFraction,
+                          controller: controller,
+                          maxWidth: maxWidth,
+                          child: builder(context, unscroll),
                         ),
                       ),
                   ],
@@ -322,5 +176,77 @@ class _ScrollableCardState extends State<ScrollableCard>
         );
       },
     );
+  }
+
+  void onPanStart(DragStartDetails details) {
+    lastStartingOffset = details.localPosition;
+    lastStartingValue = controller.value;
+  }
+
+  void onPanUpdate(DragUpdateDetails details, double maxWidth) {
+    final Offset delta = details.localPosition - lastStartingOffset;
+    final dx = delta.dx;
+    final df = dx / maxWidth;
+    final sign = -df.sign;
+    final tdf = 1 - pow(2, -df.abs() * 10);
+    final stdf = tdf * sign;
+    controller.value = (lastStartingValue + stdf).clamp(
+      allowFromLeft ? -1 : 0,
+      allowFromRight ? 1 : 0,
+    );
+  }
+
+  void onPanEnd(DragEndDetails details) {
+    final double vx = details.velocity.pixelsPerSecond.dx;
+    final _Started started = switch (lastStartingValue) {
+      < -0.1 => _Started.scrollFromLeft,
+      > 0.1 => _Started.scrollFromRight,
+      _ => _Started.center,
+    };
+
+    const threshold = 750.0;
+    final _Going going = switch (vx) {
+      < -threshold => _Going.fastFromRight,
+      > threshold => _Going.fastFromLeft,
+      _ => _Going.slow,
+    };
+    final _CloseTo closeTo = switch (controller.value) {
+      < -0.75 => _CloseTo.scrollFromLeft,
+      > 0.75 => _CloseTo.scrollFromRight,
+      _ => _CloseTo.center,
+    };
+    switch ((started, going, closeTo)) {
+      case (
+            _Started.scrollFromRight || _Started.center,
+            _Going.fastFromRight,
+            _,
+          ) ||
+          (
+            _Started.center || _Started.scrollFromRight,
+            _Going.slow,
+            _CloseTo.scrollFromRight,
+          ):
+        finishScrollFromRight();
+        return;
+      case (
+            _Started.scrollFromLeft || _Started.center,
+            _Going.fastFromLeft,
+            _,
+          ) ||
+          (
+            _Started.center || _Started.scrollFromLeft,
+            _Going.slow,
+            _CloseTo.scrollFromLeft,
+          ):
+        finishScrollFromLeft();
+        return;
+      case (_, _Going.slow, _CloseTo.center) ||
+          (_Started.scrollFromRight, _Going.fastFromLeft, _) ||
+          (_Started.scrollFromLeft, _Going.fastFromRight, _) ||
+          (_Started.scrollFromRight, _Going.slow, _CloseTo.scrollFromLeft) ||
+          (_Started.scrollFromLeft, _Going.slow, _CloseTo.scrollFromRight):
+        unscroll();
+        return;
+    }
   }
 }
