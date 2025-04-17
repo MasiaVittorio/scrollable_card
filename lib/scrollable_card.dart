@@ -6,8 +6,7 @@ import 'package:sid_base/sid_base.dart';
 
 part 'src/animated_body.dart';
 part 'src/animated_decoration.dart';
-part 'src/animated_left.dart';
-part 'src/animated_right.dart';
+part 'src/animated_from.dart';
 part 'src/rest_body.dart';
 
 typedef ScrolledBuilder =
@@ -152,7 +151,7 @@ class _ScrollableCardState extends State<ScrollableCard>
                     ),
                     if (widget.fromRightBuilder case ScrolledBuilder builder)
                       Positioned.fill(
-                        child: _AnimatedRight(
+                        child: _AnimatedFrom.right(
                           translationFraction: widget.translationFraction,
                           controller: controller,
                           maxWidth: maxWidth,
@@ -161,7 +160,7 @@ class _ScrollableCardState extends State<ScrollableCard>
                       ),
                     if (widget.fromLeftBuilder case ScrolledBuilder builder)
                       Positioned.fill(
-                        child: _AnimatedLeft(
+                        child: _AnimatedFrom.left(
                           translationFraction: widget.translationFraction,
                           controller: controller,
                           maxWidth: maxWidth,
