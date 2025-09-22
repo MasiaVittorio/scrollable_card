@@ -1,4 +1,3 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -122,7 +121,7 @@ class _ScrollableCardState extends State<ScrollableCard>
           constraints: constraints,
           child: _AnimatedDecoration(
             controller: controller,
-            unscrolledShape: widget.scrolledShape,
+            unscrolledShape: widget.shape,
             scrolledShape: widget.scrolledShape,
             margin: widget.margin,
             scrolledMargin: widget.scrolledMargin,
@@ -131,7 +130,9 @@ class _ScrollableCardState extends State<ScrollableCard>
             child: GestureDetector(
               onPanStart: onPanStart,
               onPanUpdate: (details) => onPanUpdate(details, maxWidth),
-              onPanEnd: onPanEnd,
+              onPanEnd:
+                  (details) => onPanEnd(details.velocity.pixelsPerSecond.dx),
+              onPanCancel: () => onPanEnd(0),
               child: Container(
                 color: Colors.transparent, // important for the gesture detector
                 child: Stack(
@@ -195,8 +196,7 @@ class _ScrollableCardState extends State<ScrollableCard>
     );
   }
 
-  void onPanEnd(DragEndDetails details) {
-    final double vx = details.velocity.pixelsPerSecond.dx;
+  void onPanEnd(double vx) {
     final _Started started = switch (lastStartingValue) {
       < -0.1 => _Started.scrollFromLeft,
       > 0.1 => _Started.scrollFromRight,
@@ -225,7 +225,11 @@ class _ScrollableCardState extends State<ScrollableCard>
             _Going.slow,
             _CloseTo.scrollFromRight,
           ):
-        finishScrollFromRight();
+        if (allowFromRight) {
+          finishScrollFromRight();
+        } else {
+          unscroll();
+        }
         return;
       case (
             _Started.scrollFromLeft || _Started.center,
@@ -237,7 +241,11 @@ class _ScrollableCardState extends State<ScrollableCard>
             _Going.slow,
             _CloseTo.scrollFromLeft,
           ):
-        finishScrollFromLeft();
+        if (allowFromLeft) {
+          finishScrollFromLeft();
+        } else {
+          unscroll();
+        }
         return;
       case (_, _Going.slow, _CloseTo.center) ||
           (_Started.scrollFromRight, _Going.fastFromLeft, _) ||
